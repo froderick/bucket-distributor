@@ -160,6 +160,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
     private final TimeUnit announceUnits;
     private final long expirationPeriod;
     private final TimeUnit expirationUnits;
+    private final long partitionUpdateDelay;
     private final long partitionUpdatePeriod;
     private final TimeUnit partitionUpdateUnits;
     private final String peerId = peerId();
@@ -185,9 +186,9 @@ public class RabbitBucketDistributor implements BucketDistributor {
                                    ScheduledExecutorService scheduler,
                                    long announcePeriod, TimeUnit announceUnits,
                                    long expirationPeriod, TimeUnit expirationUnits,
-                                   long partitionUpdatePeriod, TimeUnit partitionUpdateUnits) {
+                                   long partitionUpdateDelay, long partitionUpdatePeriod, TimeUnit partitionUpdateUnits) {
 
-        log = LoggerFactory.getLogger(RabbitBucketDistributor.class.getName() + "[" + name + "]");
+        log = LoggerFactory.getLogger(RabbitBucketDistributor.class.getName() + "[" + name + "::" + this.toString() + "]");
 
         this.c = c;
         this.ownerQueue = name + ".bucket.owner";
@@ -199,6 +200,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
         this.announceUnits = announceUnits;
         this.expirationPeriod = expirationPeriod;
         this.expirationUnits = expirationUnits;
+        this.partitionUpdateDelay = partitionUpdateDelay;
         this.partitionUpdatePeriod = partitionUpdatePeriod;
         this.partitionUpdateUnits = partitionUpdateUnits;
     }
@@ -505,7 +507,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
                         log.error("broadcast failed", e);
                     }
                 }
-            }, 5, announcePeriod, announceUnits);
+            }, partitionUpdateDelay, announcePeriod, announceUnits);
 
             partitionUpdate = scheduler.scheduleAtFixedRate(new Runnable() {
                 public void run() {
