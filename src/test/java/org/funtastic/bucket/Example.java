@@ -30,7 +30,7 @@ public class Example {
         final RabbitBucketDistributor s = new RabbitBucketDistributor(c, "test", buckets, scheduler,
             1, TimeUnit.MINUTES, // announce period
             2, TimeUnit.MINUTES, // expiration period
-            5, TimeUnit.SECONDS // partition update period
+            5, 5, TimeUnit.SECONDS // partition update delay/period
             );
 
         s.start();
