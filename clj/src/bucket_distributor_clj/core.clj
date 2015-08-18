@@ -10,9 +10,6 @@
             [midje.sweet       :as t])
   (:import [java.util.concurrent LinkedBlockingQueue TimeUnit Executors ScheduledExecutorService]))
 
-(defn- ex 
-  [msg] (Exception. msg))
-
 (defn require-ch 
   [conn]
   (let [ch (lch/open conn)]
@@ -46,10 +43,6 @@
 ;;
 ;; bucket queue init
 ;;
-
-(t/fact 
-  (let [f 1]
-    (+ 2 2) => 4))
 
 (defn- with-rabbit-lock! [conn queue-name instance-id f]
   (with-chan [ch conn]
