@@ -141,6 +141,6 @@
                 (.printStackTrace e)))))))) 
 
    ;; initial shutdown blocks until release! is performed
-   => [[[nil "bar"] [nil "bing"]] [[nil "bar"] [nil "bing"]]])
+   => [[["foo" "bar"] ["baz" "bing"]] [["foo" "bar"] ["baz" "bing"]]])
 
 
