@@ -43,6 +43,12 @@
             <version>2.12.4</version>
         </dependency>
 
+        <dependency>
+            <groupId>bucket-distributor-clj</groupId>
+            <artifactId>bucket-distributor-clj</artifactId>
+            <version>0.1.0-SNAPSHOT-standalone</version>
+        </dependency>
+
 
     </dependencies>
 
