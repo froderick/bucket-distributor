@@ -90,6 +90,8 @@
 ;; bucket consumer
 ;;
 
+(defrecord BucketConsumer [instance-id ch consumer-tag incoming active status empty-signal])
+
 (defn- bucket-consumer-shutdown-handler!
   "Cleans up resources on consumer shutdown based on observing changes to
    the consumer state."
@@ -134,13 +136,13 @@
 
      (add-watch state-atom :watcher #(bucket-consumer-shutdown-handler! %3 %4))
 
-     (reset! state-atom {:instance-id instance-id
-                         :ch ch
-                         :consumer-tag (lc/subscribe ch queue-name handler)
-                         :incoming []
-                         :active []
-                         :status :running
-                         :empty-signal (LinkedBlockingQueue. 1)})
+     (reset! state-atom (map->BucketConsumer {:instance-id instance-id
+                                              :ch ch
+                                              :consumer-tag (lc/subscribe ch queue-name handler)
+                                              :incoming []
+                                              :active []
+                                              :status :running
+                                              :empty-signal (LinkedBlockingQueue. 1)}))
      state-atom)))
 
 (defn- stop-swap 
