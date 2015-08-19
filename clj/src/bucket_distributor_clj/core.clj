@@ -8,7 +8,8 @@
             [langohr.consumers :as lc]
             [langohr.basic     :as lb]
             [midje.sweet       :as t])
-  (:import [java.util.concurrent LinkedBlockingQueue TimeUnit Executors ScheduledExecutorService]))
+  (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
+            ScheduledExecutorService Future]))
 
 (defn require-ch 
   [conn]
@@ -82,7 +83,7 @@
           (lq/declare ch bucket-queue {:durable false 
                                        :exclusive false, 
                                        :auto-delete false})
-          (doseq [bucket buckets]
+          (doseq [^String bucket buckets]
             (lb/publish ch "" bucket-queue (.getBytes bucket))))))))
 
 ;;
@@ -92,7 +93,7 @@
 (defn- bucket-consumer-shutdown-handler!
   "Cleans up resources on consumer shutdown based on observing changes to
    the consumer state."
-  [old-state {:keys [instance-id status active empty-signal ch consumer-tag]}]
+  [old-state {:keys [instance-id status active ^BlockingQueue empty-signal ch consumer-tag]}]
 
   (cond
     ;; Let the shutdown thread know (via blockingqueue) when all the active
@@ -159,7 +160,7 @@
   [state-atom & {:keys [force-stop]}]
 
     (loop []
-      (let [{:keys [status empty-signal]} (swap! state-atom stop-swap force-stop)]
+      (let [{:keys [status ^BlockingQueue empty-signal]} (swap! state-atom stop-swap force-stop)]
         (when (not= status :stopped)
           (log/debugf "[%s] waiting for empty signal" (:instance-id @state-atom))
           (.take empty-signal) ;; wait for a message indicating we should try again
@@ -207,10 +208,12 @@
 ;; broadcast sender and consumer
 ;;
 
-(defn send-broadcast! [conn exchange-name peer-id message]
-  (with-open [ch (require-ch conn)]
+(defn send-broadcast! [conn exchange-name peer-id ^String message]
+  (with-chan [ch conn]
     (lb/publish ch exchange-name "" (.getBytes message) 
                 {:headers {"peer-id" peer-id}})))
+
+(defrecord BroadcastConsumer [ch consumer-tag])
 
 (defn start-broadcast-consumer! 
   "Creates and starts a broadcast consumer, returns a record that contains
@@ -221,7 +224,8 @@
   (let [ch (require-ch conn)
         queue-name (-> ch lq/declare :queue)
         handler (fn [ch {:keys [delivery-tag headers]} ^bytes payload]
-                  (let [sender-id (-> (get headers "peer-id")
+                  (let [^com.rabbitmq.client.LongString sender-wrapper (get headers "peer-id") ; rabbit driver weirdness
+                        sender-id (-> sender-wrapper
                                       (.getBytes)
                                       (String.))
                         broadcast (String. payload)]
@@ -236,8 +240,8 @@
     (le/declare ch exchange-name "fanout")
     (lq/bind ch queue-name exchange-name)
   
-    {:ch ch
-     :consumer-tag (lc/subscribe ch queue-name handler)}))
+    (map->BroadcastConsumer {:ch ch
+                             :consumer-tag (lc/subscribe ch queue-name handler)})))
 
 (defn stop-broadcast-consumer! 
   "Shuts down the broadcast consumer. Returns nil."
@@ -265,7 +269,7 @@
     (assoc state :peers (dissoc peers peer-id)))
 
 (defn- handle-broadcast! 
-  [{:keys [peer-id state-atom broadcast!] :as distributor} sender-id msg]
+  [{:keys [peer-id state-atom broadcast!] :as distributor} sender-id ^String msg]
 
   (when-not (= peer-id sender-id)
     (log/debugf "[%s] received [%s]" peer-id msg))
@@ -284,7 +288,7 @@
 
 ;; handle periodic self-announce and peer expiration
 
-(defn- expire-swap [expiration-period expiration-units peer-id {:keys [peers] :as state}]
+(defn- expire-swap [expiration-period ^TimeUnit expiration-units peer-id {:keys [peers] :as state}]
   (let [now (System/currentTimeMillis)
         oldest-permitted (- now (.toMillis expiration-units expiration-period))
         expired (->> peers
@@ -365,6 +369,9 @@
 
 ;; bucket distributor main entry point
 
+(defrecord RabbitBucketDistributor [options default-buckets peer-id state-atom 
+                              broadcast! broadcast-consumer peers-future partition-future])
+
 (defn start-bucket-distributor! 
   [conn bucket-name default-buckets ^ScheduledExecutorService scheduler options]
 
@@ -393,11 +400,11 @@
           broadcast! #(send-broadcast! conn broadcast-exchange peer-id %)
 
           ; core stuff that gets passed around
-          distributor {:options options
-                       :default-buckets default-buckets
-                       :peer-id peer-id 
-                       :state-atom state-atom
-                       :broadcast! broadcast!}
+          distributor (map->RabbitBucketDistributor {:options options
+                                                     :default-buckets default-buckets
+                                                     :peer-id peer-id 
+                                                     :state-atom state-atom
+                                                     :broadcast! broadcast!})
 
           broadcast-consumer (start-broadcast-consumer! conn broadcast-exchange
                                                         #(handle-broadcast! distributor %1 %2))
@@ -415,7 +422,7 @@
                                  partition-delay partition-period partition-units)))))
 
 (defn stop-bucket-distributor! 
-  [{:keys [broadcast! broadcast-consumer peers-future partition-future peer-id state-atom]}]
+  [{:keys [broadcast! broadcast-consumer ^Future peers-future ^Future partition-future peer-id state-atom]}]
 
   (log/infof "[%s] stopping distributor" peer-id)
 
@@ -445,7 +452,27 @@
 
   (dist-add)
   (dist-remove)
-  (clojure.pprint/pprint distributors))
+  (clojure.pprint/pprint distributors)
+
+  (do 
+    (doseq [dist @distributors]
+      (let [consumer (-> @distributors first :state-atom deref :bucket-consumer)
+            buckets (buckets! consumer)]
+        (release! consumer buckets)))
+
+    (Thread/sleep 1000)
+
+    (doseq [dist @distributors]
+      (let [consumer (-> dist :state-atom deref :bucket-consumer)
+            buckets (buckets! consumer)]
+        (prn buckets))))
+
+  (count @distributors)
+    
+  (def consumer (-> @distributors first :state-atom deref :bucket-consumer))
+  (buckets! consumer)
+  (release! consumer (buckets! consumer))
+  )
 
 (defprotocol BucketDistributor "A mechanism for coordinated distribution of
                                 hash buckets."
