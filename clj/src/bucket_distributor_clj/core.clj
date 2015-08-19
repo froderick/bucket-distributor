@@ -434,6 +434,26 @@
   (stop-bucket-consumer! (-> @state-atom :bucket-consumer))
   (broadcast! (str "retract:" peer-id)))
 
+(defprotocol BucketDistributor "A mechanism for coordinated distribution of
+                                hash buckets."
+
+  (acquire-buckets! [this] "Returns the set of buckets currently available to a
+                   distributor instance. This function may return an empty set
+                   if no buckets are yet available. Must not block.")
+
+  (release-buckets! [this buckets] "Releases the current set of buckets back to the
+                           cluster.  This method is a way of indicating that
+                           the client is done with the current set of buckets.
+                           The distributor is responsible for fetching the next
+                           set of buckets. Must not block."))
+
+(extend-protocol BucketDistributor
+  RabbitBucketDistributor
+  (acquire-buckets! [this]
+    (buckets! (-> this :state-atom deref :bucket-consumer)))
+  (release-buckets! [this buckets]
+    (release! (-> this :state-atom deref :bucket-consumer) buckets)))
+
 (comment
 
   (def distributors (atom []))
@@ -458,15 +478,13 @@
 
   (do 
     (doseq [dist @distributors]
-      (let [consumer (-> @distributors first :state-atom deref :bucket-consumer)
-            buckets (buckets! consumer)]
-        (release! consumer buckets)))
+      (let [buckets (acquire-buckets! dist)]
+        (release-buckets! dist buckets)))
 
     (Thread/sleep 1000)
 
     (doseq [dist @distributors]
-      (let [consumer (-> dist :state-atom deref :bucket-consumer)
-            buckets (buckets! consumer)]
+      (let [buckets (acquire-buckets! dist)]
         (prn buckets))))
 
   (count @distributors)
@@ -475,16 +493,5 @@
   (buckets! consumer)
   (release! consumer (buckets! consumer))
   )
+  
 
-(defprotocol BucketDistributor "A mechanism for coordinated distribution of
-                                hash buckets."
-
-  (acquire-buckets! [this] "Returns the set of buckets currently available to a
-                   distributor instance. This function may return an empty set
-                   if no buckets are yet available. Must not block.")
-
-  (release-buckets! [this buckets] "Releases the current set of buckets back to the
-                           cluster.  This method is a way of indicating that
-                           the client is done with the current set of buckets.
-                           The distributor is responsible for fetching the next
-                           set of buckets. Must not block."))
