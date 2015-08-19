@@ -1,8 +1,7 @@
 (ns bucket-distributor-clj.interop
   (:require [bucket-distributor-clj.core :as core])
   (:gen-class
-    ;:name org.funtastic.dist.rabbit.RabbitDistributor
-    ;:load-impl-ns org.funtastic.dist.rabbit
+    :name org.funtastic.dist.rabbit.RabbitDistributor
     :implements [org.funtastic.dist.Distributor org.funtastic.dist.rabbit.Service]
     :main false
     :init init
@@ -11,47 +10,60 @@
 (defn -init []
   [[] (atom {})])
 
+(defn state [^org.funtastic.dist.rabbit.RabbitDistributor this]
+  (.state this))
+
 (defn setfield
-  [^bucket_distributor_clj.interop this key value]
-      (swap! (.state this) into {key value}))
+  [^org.funtastic.dist.rabbit.RabbitDistributor this key value]
+      (swap! (state this) into {key value}))
 
-(defn -setConnection [this  conn]
-  (setfield this :conn conn))
+(defn -setConnection [this v]
+  (setfield this :conn v))
 
-(defn -setName [this  conn]
-  (setfield this :conn conn))
+(defn -setName [this v]
+  (setfield this :name v))
 
-(defn -setDefaultBuckets [this  conn]
-  (setfield this :conn conn))
+(defn -setDefaultBuckets [this  v]
+  (setfield this :default-buckets v))
 
-(defn -setScheduler [this  conn]
-  (setfield this :conn conn))
+(defn -setScheduler [this  v]
+  (setfield this :scheduler v))
 
-(defn -setScheduler [this  conn]
-  (setfield this :conn conn))
+(defn -setPeersPeriod [this  v]
+  (setfield this :peers-period v))
 
-(defn -setPeersPeriod [this  conn]
-  (setfield this :conn conn))
+(defn -setPeersUnits [this v]
+  (setfield this :peers-units v))
 
-(defn -setPeersUnits [this conn]
-  (setfield this :conn conn))
+(defn -setExpirationPeriod [this  v]
+  (setfield this :expiration-period v))
 
-(defn -setExpirationPeriod [this  conn]
-  (setfield this :conn conn))
+(defn -setExpirationUnits [this  v]
+  (setfield this :expiration-units v))
 
-(defn -setExpirationUnits [this  conn]
-  (setfield this :conn conn))
+(defn -setPartitionDelay [this  v]
+  (setfield this :partition-delay v))
 
-(defn -setPartitionDelay [this  conn]
-  (setfield this :conn conn))
+(defn -setPartitionPeriod [this  v]
+  (setfield this :partition-period v))
 
-(defn -setPartitionPeriod [this  conn]
-  (setfield this :conn conn))
+(defn -setPartitionUnits [this  v]
+  (setfield this :partition-units v))
 
-(defn -setPartitionUnits [this  conn]
-  (setfield this :conn conn))
+(defn -start [this]
+  (let [{:keys [conn name default-buckets scheduler]} @(state this)]
+    (setfield this :dist (core/start-bucket-distributor! conn name default-buckets scheduler {}))))
 
-(defn -start [])
+(defn dist [this]
+  (let [{:keys [dist]} @(state this)]
+    dist))
 
-(defn -stop [])
+(defn -stop [this]
+  (core/stop-bucket-distributor! (dist this)))
+
+(defn -buckets [this]
+  (core/acquire-buckets! (dist this)))
+
+(defn -release [this buckets]
+  (core/release-buckets! (dist this) buckets))
 

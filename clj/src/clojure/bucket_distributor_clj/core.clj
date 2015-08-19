@@ -184,7 +184,7 @@
   (->> (swap! state-atom buckets-swap)
        :active
        (map first)
-       (into [])))
+       (into #{})))
 
 (defn- release-swap 
   [{:keys [active] :as state} buckets]
