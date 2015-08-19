@@ -1,13 +1,12 @@
 (ns bucket-distributor-clj.core
-  (:require [clojure.tools.logging :as log]
-            [clojure.core.async :as async :refer [chan <!! >!!]]
+  (:require [clojure.set]
+            [clojure.tools.logging :as log]
             [langohr.core      :as rmq]
             [langohr.channel   :as lch]
             [langohr.queue     :as lq]
             [langohr.exchange  :as le]
             [langohr.consumers :as lc]
-            [langohr.basic     :as lb]
-            [midje.sweet       :as t])
+            [langohr.basic     :as lb])
   (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
             ScheduledExecutorService Future]))
 
