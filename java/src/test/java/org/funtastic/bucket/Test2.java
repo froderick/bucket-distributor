@@ -1,16 +1,16 @@
 package org.funtastic.bucket;
 
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import org.funtastic.dist.Distributor;
-import org.funtastic.dist.rabbit.RabbitDistributor;
+    import com.rabbitmq.client.Connection;
+    import com.rabbitmq.client.ConnectionFactory;
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+    import java.util.HashSet;
+    import java.util.Set;
+    import java.util.concurrent.Executors;
+    import java.util.concurrent.ScheduledExecutorService;
+    import java.util.concurrent.TimeUnit;
 
-public class Test {
+// TODO: make real tests, this doesn't count
+public class Test2{
 
     public static void main(String[] args) throws Exception {
 
@@ -27,18 +27,18 @@ public class Test {
 
         final Connection c = cf.newConnection();
 
-        final RabbitDistributor rd = new RabbitDistributor();
-        rd.setConnection(c);
-        rd.setName("test");
-        rd.setDefaultBuckets(buckets);
-        rd.setScheduler(scheduler);
+        final RabbitBucketDistributor s = new RabbitBucketDistributor(c, "test", buckets, scheduler,
+            1, TimeUnit.MINUTES, // announce period
+            2, TimeUnit.MINUTES, // expiration period
+            5, 5, TimeUnit.SECONDS // partition update period
+        );
 
-        rd.start();
+        s.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 try {
-                    rd.stop();
+                    s.stop();
                     scheduler.shutdownNow();
                     c.close();
                 }
@@ -48,14 +48,13 @@ public class Test {
             }
         });
 
-        final Distributor dist = rd;
         while (true) {
             try {
-                Set<String> l = dist.buckets();
+                Set<String> l = s.buckets();
                 for (String b : l) {
                     Set<String> set = new HashSet();
                     set.add(b);
-                    rd.release(set);
+                    s.release(set);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
