@@ -494,3 +494,6 @@
   )
   
 
+;; todo: is it a good idea to just restart the distributor entirely, periodically?
+;; just in case something goes wrong with it?
+;; need to do failure testing
