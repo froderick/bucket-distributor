@@ -29,121 +29,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static org.funtastic.bucket.RabbitBucketDistributor.require;
 
-/**
- * Makes use of rabbit queues for coordinated distribution of hash buckets.
- *
- * <h3>What problem is this solving?</h3>
- *
- * <p>One example is a scheduler application. A scheduler is fundamentally
- * a while loop that iterates over a set of tasks, filtering by those that
- * are ready to be performed. It is a singleton, and can become a bottleneck.
- * One way to scale it is to hash all the items into buckets such that they
- * can be grouped together by their bucket. N schedulers can then run against
- * N buckets that are assigned specifically to them, without running over each
- * other or causing data contention.</p>
- *
- * <p>1:1 assignment between schedulers and buckets is easy to implement, and works
- * well until you need to add more schedulers. With this design a rehash is
- * required which can be expensive and cause service interruptions depending on
- * the implementation.  Consistent hashing provides a way to add schedulers
- * after the fact without requiring a re-hash. It does this by hashing many more
- * buckets than schedulers, and then assigning those buckets to schedulers.</p>
- *
- * <p>At this point we can add new schedulers, but we have a configuration problem.
- * We must now maintain configuration as to which scheduler servers are assigned
- * to which buckets. Also, if one (or more) of the scheduler servers dies, we
- * will need to reassign its buckets to other schedulers. With only a handful of
- * scheduler servers, this might not be a big deal, but with many this can be a
- * maintenance nightmare.</p>
- *
- * <p>At last, we come to the point of all this. This BucketDistributor
- * implementation uses rabbit to efficiently distribute hash buckets across
- * an arbitrary number of scheduler servers (or whatever the use case)
- * automatically based on the number of buckets available and the number of
- * scheduler servers active. If the number of active scheduler servers changes,
- * the bucket partitions sizes are automatically adjusted such that each
- * scheduler still receives <code>buckets / schedulers</code> number of buckets.
- * This is designed to work even if the scheduler servers are shutdown
- * uncleanly (think <code>kill -9</code>).</p>
- *
- * <h3>Implementation Notes</h3>
- *
- * <p>Note that the buckets are pushed to clients before they ask for them. For
- * the duration that this distributor is active, it will continue to accumulate
- * buckets up to the specified limit. It will retain them until release() is
- * called, so use cases will generally involve a polling loop to check the
- * contents of buckets(), handle them, and release() them.</p>
- *
- * <p>Because this class calls basicReject() on buckets to put them back into
- * the bucket queue, it is likely that the same distributor instance may
- * receive the same set of specific buckets repeatedly. However, this is not
- * guaranteed, and you shouldn't base any code on the assumption that a
- * distributor always gets the same partition's worth of buckets. A partition
- * is just the maximum number of buckets this class expect to receive at once.</p>
- *
- * <p>This class is threadsafe.</p>
- *
- * <h3>The Perils of Distributed Computing</h3>
- *
- * <p>As this uses rabbit, this distributor offers no guarantees in the face of
- * a network partitions. It would be easy for a scheduler server from my earlier
- * example to receive a partition of buckets and then lose its connection to
- * rabbit. In this scenario, while it is processing its partition, from rabbit's
- * perspective the unacked messages go back onto the queue. Then, another scheduler
- * still connected to rabbit receives those same buckets and begins processing them
- * also.</p>
- *
- * <p>This issue can be mitigated by making processing work against a partition
- * take as little time as possible, or processing in smaller batches. That way
- * the processor spends as little time as possible in its critical section
- * and any damage from this scenario would be minimized.</p>
- *
- * <p>If CP is what you're looking for, go back, this isn't what you want.
- * Try Zookeeper.</p>
- *
- * <h3>Why use this instead of Zookeeper?</h3>
- *
- * <p>Zookeeper is strongly consistent (CP). You want this if you want to
- * guarantee(ish) that your data will never go sideways, at the cost of becoming
- * unavailable in certain circumstances. Consistency is expensive, and not all
- * distributed consensus has to be this precise.</p>
- *
- * <p>This implementation has two big advantages. First, its available rather
- * than consistent. Network partitions don't keep any apps that can connect
- * to rabbit from doing something sensible. Second, its fast. Rabbit fast.
- * 18k buckets/sec on my personal laptop fast. if that tickles your fancy,
- * this may be for you.
- * </p>
- *
- * <h3>Re-Hashing</h3>
- *
- * <p>If you need to completely rehash your data, delete the bucketQueue
- * , update the constructor with the new buckets, and redploy your code. On start(), this class
- * automatically creates the bucketQueue if it doesn't exist and populates
- * it with the configured defaults. This is done using an exclusive queue as
- * a mutex such that it shouldn't happen more than once or on more than one
- * distributor at a time.</p>
- *
- * <p>If you want to inspect the contents of the bucketQueue without having
- * to shut down all the consuming client applications in a cluster in order
- * to do this, there is a simple Command-and-Control api you can use. Post
- * a message to the <b>broadcastExchange</b> containing 'pause', and you will
- * be able to temporarily disconnect all the consumers from the bucketQueue
- * until you're done fussing with it. When you're done, submit another
- * message to that exchange containing 'resume', and you'll be back
- * on your way.</p>
- *
- * <h3>Remaining Work</h3>
- *
- * <ul>
- *     <li>TODO: publish telemetry</li>
- *     <li>TODO: what do alerts and ops dashboards look like for a system like this?</li>
- *     <li>TODO: support hot reloading of config parameters</li>
- *     <li>TODO: is it worth making the buckets a configurable item that can be swapped out without code change?</li>
- * </ul>
- *
- */
-public class RabbitBucketDistributor implements BucketDistributor {
+public class RabbitBucketDistributor {
 
     /*
      * Immutable configuration.
@@ -160,6 +46,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
     private final TimeUnit announceUnits;
     private final long expirationPeriod;
     private final TimeUnit expirationUnits;
+    private final long partitionUpdateDelay;
     private final long partitionUpdatePeriod;
     private final TimeUnit partitionUpdateUnits;
     private final String peerId = peerId();
@@ -185,9 +72,9 @@ public class RabbitBucketDistributor implements BucketDistributor {
                                    ScheduledExecutorService scheduler,
                                    long announcePeriod, TimeUnit announceUnits,
                                    long expirationPeriod, TimeUnit expirationUnits,
-                                   long partitionUpdatePeriod, TimeUnit partitionUpdateUnits) {
+                                   long partitionUpdateDelay, long partitionUpdatePeriod, TimeUnit partitionUpdateUnits) {
 
-        log = LoggerFactory.getLogger(RabbitBucketDistributor.class.getName() + "[" + name + "]");
+        log = LoggerFactory.getLogger(RabbitBucketDistributor.class.getName() + "[" + name + "::" + this.toString() + "]");
 
         this.c = c;
         this.ownerQueue = name + ".bucket.owner";
@@ -199,6 +86,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
         this.announceUnits = announceUnits;
         this.expirationPeriod = expirationPeriod;
         this.expirationUnits = expirationUnits;
+        this.partitionUpdateDelay = partitionUpdateDelay;
         this.partitionUpdatePeriod = partitionUpdatePeriod;
         this.partitionUpdateUnits = partitionUpdateUnits;
     }
@@ -505,7 +393,7 @@ public class RabbitBucketDistributor implements BucketDistributor {
                         log.error("broadcast failed", e);
                     }
                 }
-            }, 5, announcePeriod, announceUnits);
+            }, partitionUpdateDelay, announcePeriod, announceUnits);
 
             partitionUpdate = scheduler.scheduleAtFixedRate(new Runnable() {
                 public void run() {
@@ -552,12 +440,10 @@ public class RabbitBucketDistributor implements BucketDistributor {
      * public api
      */
 
-    @Override
     public Set<String> buckets() {
         return bucketConsumer.buckets();
     }
 
-    @Override
     public void release(Set<String> names) {
         bucketConsumer.release(names);
     }
