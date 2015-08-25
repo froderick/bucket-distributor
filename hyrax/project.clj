@@ -1,4 +1,4 @@
-(defproject hyrax "0.0.1-SNAPSHOT"
+(defproject org.funtastic/hyrax "0.0.1-SNAPSHOT"
   :description "A library of tools for distributed coordination via RabbitMQ and MongoDB."
   :url "http://example.com/FIXME"
   :license {:name "Apache License"
