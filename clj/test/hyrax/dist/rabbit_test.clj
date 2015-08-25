@@ -1,6 +1,6 @@
-(ns bucket-distributor-clj.core-test
+(ns hyrax.dist.rabbit-test
   (:use midje.sweet)
-  (:require [bucket-distributor-clj.core :refer :all])
+  (:require [hyrax.dist.rabbit :refer :all])
   (:require [langohr.core      :as rmq]
             [langohr.channel   :as lch]
             [langohr.queue     :as lq]
@@ -50,7 +50,7 @@
                 (.printStackTrace e)))))))) 
 
    ;; buckets are handed out in sequence
-   => [["0" "1"] ["2" "3"] ["0" "1"]])
+   => [#{"0" "1"} #{"2" "3"} #{"0" "1"}])
 
 (fact "bucket consumers block on shutdown (by default) until the client
        has released all acquired buckets"

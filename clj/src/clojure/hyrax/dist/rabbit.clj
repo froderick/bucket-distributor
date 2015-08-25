@@ -1,5 +1,6 @@
-(ns bucket-distributor-clj.core
-  (:require [clojure.set]
+(ns hyrax.dist.rabbit
+  (:require [hyrax.dist.api :as api]
+            [clojure.set]
             [clojure.tools.logging :as log]
             [langohr.core      :as rmq]
             [langohr.channel   :as lch]
@@ -370,7 +371,7 @@
 
 ;; bucket distributor main entry point
 
-(defrecord RabbitBucketDistributor [options default-buckets peer-id state-atom 
+(defrecord RabbitDistributor [options default-buckets peer-id state-atom 
                               broadcast! broadcast-consumer peers-future partition-future])
 
 (defn start-bucket-distributor! 
@@ -401,11 +402,11 @@
           broadcast! #(send-broadcast! conn broadcast-exchange peer-id %)
 
           ; core stuff that gets passed around
-          distributor (map->RabbitBucketDistributor {:options options
-                                                     :default-buckets default-buckets
-                                                     :peer-id peer-id 
-                                                     :state-atom state-atom
-                                                     :broadcast! broadcast!})
+          distributor (map->RabbitDistributor {:options options
+                                               :default-buckets default-buckets
+                                               :peer-id peer-id 
+                                               :state-atom state-atom
+                                               :broadcast! broadcast!})
 
           broadcast-consumer (start-broadcast-consumer! conn broadcast-exchange
                                                         #(handle-broadcast! distributor %1 %2))
@@ -433,21 +434,8 @@
   (stop-bucket-consumer! (-> @state-atom :bucket-consumer))
   (broadcast! (str "retract:" peer-id)))
 
-(defprotocol BucketDistributor "A mechanism for coordinated distribution of
-                                hash buckets."
-
-  (acquire-buckets! [this] "Returns the set of buckets currently available to a
-                   distributor instance. This function may return an empty set
-                   if no buckets are yet available. Must not block.")
-
-  (release-buckets! [this buckets] "Releases the current set of buckets back to the
-                           cluster.  This method is a way of indicating that
-                           the client is done with the current set of buckets.
-                           The distributor is responsible for fetching the next
-                           set of buckets. Must not block."))
-
-(extend-protocol BucketDistributor
-  RabbitBucketDistributor
+(extend-protocol api/Distributor
+  RabbitDistributor
   (acquire-buckets! [this]
     (buckets! (-> this :state-atom deref :bucket-consumer)))
   (release-buckets! [this buckets]

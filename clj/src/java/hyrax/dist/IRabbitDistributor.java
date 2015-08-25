@@ -1,4 +1,4 @@
-package org.funtastic.dist.rabbit;
+package hyrax.dist;
 
 import com.rabbitmq.client.Connection;
 
@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
  * Defines the parameters for configuring and managing a rabbit bucket distributor
  * in a java-friendly way.
  */
-public interface Service {
+public interface IRabbitDistributor extends IDistributor {
 
     void setConnection(Connection conn);
 
@@ -63,8 +63,18 @@ public interface Service {
     void setPartitionPeriod(long period);
     void setPartitionUnits(TimeUnit unit);
 
+    /**
+     * Starts the distributor. After calling start, buckets may be available
+     * for acquisition.
+     */
     void start();
 
+    /**
+     * Stops the distributor. Note that any buckets that have been acquired but
+     * not yet released will prevent the distributor's shutdown until the release
+     * happens. In this case, the distributor will block until this condition is
+     * met.
+     */
     void stop();
 }
 
