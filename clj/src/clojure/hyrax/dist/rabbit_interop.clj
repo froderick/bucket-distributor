@@ -1,8 +1,9 @@
-(ns bucket-distributor-clj.interop
-  (:require [bucket-distributor-clj.core :as core])
+(ns hyrax.dist.rabbit-interop
+  (:require [hyrax.dist.api :as api]
+            [hyrax.dist.rabbit :as rabbit])
   (:gen-class
-    :name org.funtastic.dist.rabbit.RabbitDistributor
-    :implements [org.funtastic.dist.Distributor org.funtastic.dist.rabbit.Service]
+    :name hyrax.dist.RabbitDistributor
+    :implements [hyrax.dist.IDistributor hyrax.dist.IRabbitDistributor]
     :main false
     :init init
     :state state))
@@ -10,11 +11,11 @@
 (defn -init []
   [[] (atom {})])
 
-(defn state [^org.funtastic.dist.rabbit.RabbitDistributor this]
+(defn state [this]
   (.state this))
 
 (defn setfield
-  [^org.funtastic.dist.rabbit.RabbitDistributor this key value]
+  [this key value]
       (swap! (state this) into {key value}))
 
 (defn -setConnection [this v]
@@ -52,18 +53,18 @@
 
 (defn -start [this]
   (let [{:keys [conn name default-buckets scheduler]} @(state this)]
-    (setfield this :dist (core/start-bucket-distributor! conn name default-buckets scheduler {}))))
+    (setfield this :dist (rabbit/start-bucket-distributor! conn name default-buckets scheduler {}))))
 
 (defn dist [this]
   (let [{:keys [dist]} @(state this)]
     dist))
 
 (defn -stop [this]
-  (core/stop-bucket-distributor! (dist this)))
+  (rabbit/stop-bucket-distributor! (dist this)))
 
 (defn -buckets [this]
-  (core/acquire-buckets! (dist this)))
+  (api/acquire-buckets! (dist this)))
 
 (defn -release [this buckets]
-  (core/release-buckets! (dist this) buckets))
+  (api/release-buckets! (dist this) buckets))
 

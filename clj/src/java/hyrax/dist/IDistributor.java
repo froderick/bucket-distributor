@@ -1,4 +1,4 @@
-package org.funtastic.dist;
+package hyrax.dist;
 
 import java.util.Set;
 
@@ -10,7 +10,7 @@ import java.util.Set;
  *
  * @see RabbitDistributor
  */
-public interface Distributor {
+public interface IDistributor {
 
     /**
      * Returns the set of buckets currently available to a distributor

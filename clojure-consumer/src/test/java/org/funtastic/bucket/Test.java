@@ -4,7 +4,7 @@ import clojure.java.api.Clojure;
 import clojure.lang.IFn;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import org.funtastic.dist.rabbit.RabbitDistributor;
+import hyrax.dist.RabbitDistributor;
 
 import java.util.HashSet;
 import java.util.Set;
