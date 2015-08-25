@@ -8,7 +8,7 @@
     <version>0.0.1-SNAPSHOT</version>
     <dependencies>
         <dependency>
-            <groupId>hyrax</groupId>
+            <groupId>org.funtastic</groupId>
             <artifactId>hyrax</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
