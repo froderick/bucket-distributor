@@ -1,4 +1,4 @@
-package org.funtastic.bucket;
+package hyrax.dist;
 
 import java.util.Set;
 
@@ -8,11 +8,9 @@ import java.util.Set;
  *
  * <p>Implementations of this interface should be thread safe.</p>
  *
- * <p>TODO: include a non-blocking api</p>
- *
- * @see RabbitBucketDistributor
+ * @see RabbitDistributor
  */
-public interface BucketDistributor {
+public interface IDistributor {
 
     /**
      * Returns the set of buckets currently available to a distributor
@@ -33,3 +31,4 @@ public interface BucketDistributor {
      */
     void release(Set<String> buckets);
 }
+

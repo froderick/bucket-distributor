@@ -1,18 +1,25 @@
-package org.funtastic.bucket;
+package org.funtastic.hyrax;
 
+import clojure.java.api.Clojure;
+import clojure.lang.IFn;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import hyrax.dist.RabbitDistributor;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
-// TODO: make real tests, this doesn't count
 public class Example {
 
     public static void main(String[] args) throws Exception {
+
+        // timing clojure runtime startup overhead (normally about 900ms)
+        long start = System.currentTimeMillis();
+        IFn fn = Clojure.var("clojure", "slurp");
+        long end = System.currentTimeMillis();
+        System.out.println(end - start);
 
         ConnectionFactory cf = new ConnectionFactory();
         cf.setAutomaticRecoveryEnabled(true);
@@ -27,18 +34,21 @@ public class Example {
 
         final Connection c = cf.newConnection();
 
-        final RabbitBucketDistributor s = new RabbitBucketDistributor(c, "test", buckets, scheduler,
-            1, TimeUnit.MINUTES, // announce period
-            2, TimeUnit.MINUTES, // expiration period
-            5, TimeUnit.SECONDS // partition update period
-            );
+        final RabbitDistributor rd = new RabbitDistributor();
+        rd.setConnection(c);
+        rd.setName("test");
+        rd.setDefaultBuckets(buckets);
+        rd.setScheduler(scheduler);
 
-        s.start();
+        start = System.currentTimeMillis();
+        rd.start();
+        end = System.currentTimeMillis();
+        System.out.println(end - start);
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 try {
-                    s.stop();
+                    rd.stop();
                     scheduler.shutdownNow();
                     c.close();
                 }
@@ -50,11 +60,11 @@ public class Example {
 
         while (true) {
             try {
-                Set<String> l = s.buckets();
+                Set<String> l = rd.buckets();
                 for (String b : l) {
                     Set<String> set = new HashSet();
                     set.add(b);
-                    s.release(set);
+                    rd.release(set);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
