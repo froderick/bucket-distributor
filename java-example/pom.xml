@@ -3,16 +3,10 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
-    <groupId>org.funtastic</groupId>
-    <artifactId>clojure-consumer</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <groupId>hyrax</groupId>
+    <artifactId>java-example</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
     <dependencies>
-        <dependency>
-            <groupId>org.clojure</groupId>
-            <artifactId>clojure</artifactId>
-            <version>1.7.0</version>
-        </dependency>
         <dependency>
             <groupId>hyrax</groupId>
             <artifactId>hyrax</artifactId>
@@ -24,8 +18,5 @@
             <version>1.1.2</version>
             <scope>test</scope>
         </dependency>
-
     </dependencies>
-
-
 </project>

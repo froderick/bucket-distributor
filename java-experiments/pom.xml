@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.funtastic</groupId>
-    <artifactId>bucket-distributor</artifactId>
+    <groupId>hyrax</groupId>
+    <artifactId>java-experiments</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <build>
         <plugins>
@@ -42,13 +42,6 @@
             <artifactId>mongo-java-driver</artifactId>
             <version>2.12.4</version>
         </dependency>
-
-        <dependency>
-            <groupId>bucket-distributor-clj</groupId>
-            <artifactId>bucket-distributor-clj</artifactId>
-            <version>0.1.0-SNAPSHOT-standalone</version>
-        </dependency>
-
 
     </dependencies>
 
