@@ -1,0 +1,1 @@
+This is a simple example of a java project using the java api exposed by hyrax (a clojure library).

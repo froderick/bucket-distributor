@@ -1,16 +1,15 @@
 package org.funtastic.bucket;
 
-    import com.rabbitmq.client.Connection;
-    import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 
-    import java.util.HashSet;
-    import java.util.Set;
-    import java.util.concurrent.Executors;
-    import java.util.concurrent.ScheduledExecutorService;
-    import java.util.concurrent.TimeUnit;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-// TODO: make real tests, this doesn't count
-public class Test2{
+public class BucketExample {
 
     public static void main(String[] args) throws Exception {
 
@@ -30,8 +29,8 @@ public class Test2{
         final RabbitBucketDistributor s = new RabbitBucketDistributor(c, "test", buckets, scheduler,
             1, TimeUnit.MINUTES, // announce period
             2, TimeUnit.MINUTES, // expiration period
-            5, 5, TimeUnit.SECONDS // partition update period
-        );
+            5, 5, TimeUnit.SECONDS // partition update delay/period
+            );
 
         s.start();
 
