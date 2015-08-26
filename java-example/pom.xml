@@ -11,6 +11,7 @@
             <groupId>org.funtastic</groupId>
             <artifactId>hyrax</artifactId>
             <version>0.0.1-SNAPSHOT</version>
+            <classifier>aot</classifier>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
