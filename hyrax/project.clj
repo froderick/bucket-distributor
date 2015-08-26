@@ -14,6 +14,18 @@
 
   :global-vars {*warn-on-reflection* true}
 
+  :pom-plugins [[com.theoryinpractise/clojure-maven-plugin "1.3.13"
+                 {:configuration [:sourceDirectories [:sourceDirectory "src/clojure"]]
+                  :extensions "true"
+                  :executions ([:execution [:id "compile-clojure"]
+                                [:goals ([:goal "compile"])]
+                                [:phase "compile"]])}]
+                
+                [org.apache.maven.plugins/maven-source-plugin "2.4"
+                 {:executions ([:execution [:id "sources"]
+                               [:goals ([:goal "jar"])]
+                               [:phase "package"]])}]]
+
   :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.1.2"]
                                   [midje "1.7.0"]]}
 
