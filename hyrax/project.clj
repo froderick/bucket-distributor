@@ -17,10 +17,51 @@
   :pom-plugins [[com.theoryinpractise/clojure-maven-plugin "1.3.13"
                  {:configuration [:sourceDirectories [:sourceDirectory "src/clojure"]]
                   :extensions "true"
-                  :executions ([:execution [:id "compile-clojure"]
+                  :executions ([:execution [:id "no-aot-compile"]
                                 [:goals ([:goal "compile"])]
-                                [:phase "compile"]])}]
-                
+                                [:phase "compile"]
+                                [:configuration 
+                                 [:outputDirectory "${basedir}/target/no-aot"]
+                                 [:temporaryOutputDirectory true]]]
+
+                               [:execution [:id "aot-compile"]
+                                [:goals ([:goal "compile"])]
+                                [:phase "compile"]
+                                [:configuration 
+                                 [:outputDirectory "${basedir}/target/aot"]
+                                 [:temporaryOutputDirectory false]]])}]
+
+                [org.apache.maven.plugins/maven-resources-plugin "2.7"
+                 {:executions ([:execution [:id "copy-resources-no-aot"]
+                                [:goals ([:goal "copy-resources"])]
+                                [:phase "package"]
+                                [:configuration 
+                                 [:outputDirectory "${basedir}/target/no-aot"]
+                                 [:resources [:resource [:directory "${basedir}/target/classes"]]]]]
+
+                               [:execution [:id "copy-resources-aot"]
+                                [:goals ([:goal "copy-resources"])]
+                                [:phase "package"]
+                                [:configuration [:outputDirectory "${basedir}/target/aot"]
+                                 [:resources [:resource [:directory "${basedir}/target/classes"]]]]])}]
+
+                [org.apache.maven.plugins/maven-jar-plugin "2.6"
+                 {:executions ([:execution [:id "default-jar"]
+                                [:phase "none"]]
+
+                               [:execution [:id "no-aot"]
+                                [:goals ([:goal "jar"])]
+                                [:phase "package"]
+                                [:configuration 
+                                 [:classesDirectory "${basedir}/target/no-aot"]]]
+
+                               [:execution [:id "aot"]
+                                [:goals ([:goal "jar"])]
+                                [:phase "package"]
+                                [:configuration 
+                                 [:classesDirectory "${basedir}/target/aot"]
+                                 [:classifier "aot"]]])}] 
+
                 [org.apache.maven.plugins/maven-source-plugin "2.4"
                  {:executions ([:execution [:id "sources"]
                                [:goals ([:goal "jar"])]
