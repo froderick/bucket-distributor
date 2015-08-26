@@ -14,7 +14,13 @@
 
   :global-vars {*warn-on-reflection* true}
 
-  :pom-plugins [[com.theoryinpractise/clojure-maven-plugin "1.3.13"
+  :pom-plugins [
+
+                ; These three plugins are configured to build the jar two different ways;
+                ; one with aot classes, and one without. Pity its so awkward. Has to be
+                ; a better way. A lot easier to read in here than in xml though.
+                
+                [com.theoryinpractise/clojure-maven-plugin "1.3.13"
                  {:configuration [:sourceDirectories [:sourceDirectory "src/clojure"]]
                   :extensions "true"
                   :executions ([:execution [:id "no-aot-compile"]
@@ -61,6 +67,9 @@
                                 [:configuration 
                                  [:classesDirectory "${basedir}/target/aot"]
                                  [:classifier "aot"]]])}] 
+
+                ; This plugin is here to provide a source jar artifact that java-friendly 
+                ; IDE's can understand.
 
                 [org.apache.maven.plugins/maven-source-plugin "2.4"
                  {:executions ([:execution [:id "sources"]
