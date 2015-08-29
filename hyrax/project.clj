@@ -10,8 +10,7 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-api "1.7.7"]
-                 [com.novemberain/langohr "3.3.0" :exclusions [cheshire clj-http]]
-                 [prismatic/schema "0.4.4"]]
+                 [com.novemberain/langohr "3.3.0" :exclusions [cheshire clj-http]]]
 
   :global-vars {*warn-on-reflection* true}
 
