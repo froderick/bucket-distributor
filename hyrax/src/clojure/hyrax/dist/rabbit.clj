@@ -7,12 +7,12 @@
             [langohr.queue     :as lq]
             [langohr.exchange  :as le]
             [langohr.consumers :as lc]
-            [langohr.basic     :as lb]
-            [schema.core :as s])
+            [langohr.basic     :as lb])
   (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
-            ScheduledExecutorService Future]))
+                                 ScheduledExecutorService Future]
+            [com.rabbitmq.client Connection]))
 
-(s/defn require-ch 
+(defn require-ch 
   [conn]
   (let [ch (lch/open conn)]
     (when-not ch
@@ -20,6 +20,11 @@
     ch))
 
 (defmacro with-conn
+"Evaluates body while providing a connection to the requested rabbit broker.
+  The binding provides the broker information for the connection and the name to which
+  that is bound for evaluation of the body. 
+  (with-conn [conn params-map] ...)"
+
   [binding & body]
   `(let [config# ~(second binding)
          ~(first binding) (rmq/connect config#)]
@@ -32,6 +37,11 @@
              (.printStackTrace e#)))))))
 
 (defmacro with-chan
+"Evaluates body while providing a channel to the requested rabbit connection. 
+  The binding provides the connection and the name to which the channel
+  is bound for evaluation of the body. 
+  (with-chan [ch conn] ...)"
+
   [binding & body]
   `(let [conn# ~(second binding)
          ~(first binding) (require-ch conn#)]
@@ -46,7 +56,8 @@
 ;; bucket queue init
 ;;
 
-(defn- with-rabbit-lock! [conn queue-name instance-id f]
+(defn- with-rabbit-lock!
+  [conn queue-name instance-id f]
   (with-chan [ch conn]
     (let [acquired (try
                      (lq/declare ch queue-name)
