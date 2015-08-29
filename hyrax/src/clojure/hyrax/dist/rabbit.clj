@@ -375,25 +375,24 @@
   (when (log/enabled? :debug)
     (log-peer-changes last-peers peers peer-id))
 
-  (when (not= last-size new-size)
+  (let [start-fn #(try
+                    (start-bucket-consumer! conn queue-name new-size peer-id consumer)
+                    (catch Exception e
+                      (log/errorf e "[%s] bucket-consumer start failed" peer-id)
+                      nil))]
 
-    (log/infof "[%s] detected %s consumer(s), using bucket partition size of %s (was %s)" 
-              peer-id (count peers) new-size last-size)
+    (if (not= last-size new-size)
 
-    (stop-bucket-consumer! consumer)
-
-    (let [start-fn #(try
-                      (start-bucket-consumer! conn queue-name new-size peer-id consumer true)
-                      (catch Exception e
-                        (log/errorf e "[%s] bucket-consumer start failed" peer-id)
-                        nil))]
-      (loop []
-        (let [result (start-fn)]
-          result
-          (do 
-            (interruptible-sleep 2000 peer-id)
-            (log/infof "[%s] retrying bucket-consumer startup" peer-id)
-            (recur)))))))
+      (do
+        (log/infof "[%s] detected %s consumer(s), using bucket partition size of %s (was %s)" 
+                   peer-id (count peers) new-size last-size)
+        (stop-bucket-consumer! consumer) ;; doesn't throw exceptions on errors
+        (start-fn))
+      
+      (let [{:keys [status]} @consumer]
+        (when (= status :stopped)
+          (log/infof "[%s] retrying bucket-consumer startup" peer-id)
+          (start-fn))))))
 
 (defn peer-id-old []
   (let [hostname (-> (java.net.InetAddress/getLocalHost) .getHostName)
@@ -490,7 +489,7 @@
 
     (defn- dist-add []
       (swap! distributors 
-             #(conj % (let [conn (rmq/connect {:vhost "boofa"})
+             #(conj % (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
                             scheduler (Executors/newScheduledThreadPool 1)
                             buckets (->> (range 100) (map str) (into []))]
                         (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
@@ -524,7 +523,3 @@
   (release! consumer (buckets! consumer))
   )
   
-
-;; todo: is it a good idea to just restart the distributor entirely, periodically?
-;; just in case something goes wrong with it?
-;; need to do failure testing
