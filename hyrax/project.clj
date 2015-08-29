@@ -10,7 +10,8 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-api "1.7.7"]
-                 [com.novemberain/langohr "3.3.0" :exclusions [cheshire clj-http]]]
+                 [com.novemberain/langohr "3.3.0" :exclusions [cheshire clj-http]]
+                 [prismatic/schema "0.4.4"]]
 
   :global-vars {*warn-on-reflection* true}
 
@@ -77,7 +78,8 @@
                                [:phase "package"]])}]]
 
   :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.1.2"]
-                                  [midje "1.7.0"]]}
+                                  [midje "1.7.0"]]
+                   :plugins [[lein-midje "3.1.3"]]}
 
              ; so we can build aot versions as needed, since java is the main target of this library
              :aot-build {:aot :all}})

@@ -7,11 +7,12 @@
             [langohr.queue     :as lq]
             [langohr.exchange  :as le]
             [langohr.consumers :as lc]
-            [langohr.basic     :as lb])
+            [langohr.basic     :as lb]
+            [schema.core :as s])
   (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
             ScheduledExecutorService Future]))
 
-(defn require-ch 
+(s/defn require-ch 
   [conn]
   (let [ch (lch/open conn)]
     (when-not ch
@@ -109,9 +110,15 @@
     (and (= status :stopped) (not= status (:status old-state)))
     (do
       (log/debugf "[%s] bucket-consumer shutting down" instance-id)
-      (lb/cancel ch consumer-tag)
-      (lb/recover ch true)
-      (lch/close ch))))
+
+      ;; if any of these lines fail, the channel is left in an effectively
+      ;; closed state, so we don't need to make sure we close it here
+      (try 
+        (lb/cancel ch consumer-tag)
+        (lb/recover ch true)
+        (lch/close ch)
+        (catch Exception e
+          (log/errorf e "[%s] bucket-consumer shutdown failed" instance-id))))))
 
 (defn- incoming-swap 
   [{:keys [incoming] :as state} bucket]
@@ -126,6 +133,9 @@
    (start-bucket-consumer! conn queue-name qos instance-id (atom {})))
 
   ([conn queue-name qos instance-id state-atom]
+   (start-bucket-consumer! conn queue-name qos instance-id state-atom false))
+
+  ([conn queue-name qos instance-id state-atom fail?]
 
    (log/debugf "[%s] bucket consumer starting: %s" instance-id {:qos qos})
    
@@ -136,9 +146,15 @@
 
      (add-watch state-atom :watcher #(bucket-consumer-shutdown-handler! %3 %4))
 
+     (when fail? (lch/close ch))
+
      (reset! state-atom (map->BucketConsumer {:instance-id instance-id
                                               :ch ch
+
+                                              ;; if this line fails the chan will automatically
+                                              ;; be left in a closed state, we don't need to clean it up
                                               :consumer-tag (lc/subscribe ch queue-name handler)
+
                                               :incoming []
                                               :active []
                                               :status :running
@@ -333,26 +349,51 @@
     (catch Exception e
       (.printStackTrace e))))
 
-(defn- partition-size-listener!
-  "Restarts the distributor's bucket consumer when the partition size changes 
-   so that it and the qos value match."
-  [conn queue-name peer-id
-   {last-size :partition-size last-peers :peers} 
-   {new-size :partition-size consumer :bucket-consumer :keys [peers]}]
+(defn- interruptible-sleep [millis peer-id]
+  (try
+    (Thread/sleep 1000)
+    (catch InterruptedException e
+      (log/infof e "[%s] interrupted while about to retry bucket-consumer startup" peer-id))))
 
+(defn- log-peer-changes 
+  [last-peers peers peer-id]
   (let [make-set #(->> % (map first) (into #{}))
         a (make-set last-peers)
         b (make-set peers)]
     (doseq [id (clojure.set/difference b a)]
       (log/debugf "[%s] peer added: %s%s" peer-id id (if (= id peer-id) " (self)" "")))
     (doseq [id (clojure.set/difference a b)]
-      (log/debugf "[%s] peer removed: %s%s" peer-id id (if (= id peer-id) " (self)" ""))))
+      (log/debugf "[%s] peer removed: %s%s" peer-id id (if (= id peer-id) " (self)" "")))))
+
+(defn- partition-size-listener!
+  "Restarts the distributor's bucket consumer when the partition size changes 
+   so that it and the qos value match."
+  [conn queue-name peer-id
+   {last-size :partition-size last-peers :peers} 
+   {new-size :partition-size consumer :bucket-consumer :keys [peers shutdown]}]
+
+  (when (log/enabled? :debug)
+    (log-peer-changes last-peers peers peer-id))
 
   (when (not= last-size new-size)
+
     (log/infof "[%s] detected %s consumer(s), using bucket partition size of %s (was %s)" 
               peer-id (count peers) new-size last-size)
+
     (stop-bucket-consumer! consumer)
-    (start-bucket-consumer! conn queue-name new-size peer-id consumer)))
+
+    (let [start-fn #(try
+                      (start-bucket-consumer! conn queue-name new-size peer-id consumer true)
+                      (catch Exception e
+                        (log/errorf e "[%s] bucket-consumer start failed" peer-id)
+                        nil))]
+      (loop []
+        (let [result (start-fn)]
+          result
+          (do 
+            (interruptible-sleep 2000 peer-id)
+            (log/infof "[%s] retrying bucket-consumer startup" peer-id)
+            (recur)))))))
 
 (defn peer-id-old []
   (let [hostname (-> (java.net.InetAddress/getLocalHost) .getHostName)
@@ -395,7 +436,8 @@
 
           state-atom (-> (atom {:peers {} ; atomic peer/bucket partition size state
                                 :partition-size 1
-                                :bucket-consumer (start-bucket-consumer! conn bucket-queue 1 peer-id)})
+                                :bucket-consumer (start-bucket-consumer! conn bucket-queue 1 peer-id)
+                                :shutdown false})
                          (add-watch :watch 
                                     #(partition-size-listener! conn bucket-queue peer-id %3 %4)))
 
@@ -436,28 +478,29 @@
 
 (extend-protocol api/Distributor
   RabbitDistributor
-  (acquire-buckets! [this]
+  (acquire-buckets* [this]
     (buckets! (-> this :state-atom deref :bucket-consumer)))
-  (release-buckets! [this buckets]
+  (release-buckets* [this buckets]
     (release! (-> this :state-atom deref :bucket-consumer) buckets)))
 
 (comment
 
-  (def distributors (atom []))
+  (do 
+    (def distributors (atom []))
 
-  (defn- dist-add []
-    (swap! distributors 
-           #(conj % (let [conn (rmq/connect {:vhost "boofa"})
-                          scheduler (Executors/newScheduledThreadPool 1)
-                          buckets (->> (range 100) (map str) (into []))]
-                      (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
-    nil)
+    (defn- dist-add []
+      (swap! distributors 
+             #(conj % (let [conn (rmq/connect {:vhost "boofa"})
+                            scheduler (Executors/newScheduledThreadPool 1)
+                            buckets (->> (range 100) (map str) (into []))]
+                        (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
+      nil)
 
-  (defn- dist-remove []
-    (when-let [dist (first @distributors)]
-      (stop-bucket-distributor! dist)
-      (swap! distributors #(rest %)))
-    nil)
+    (defn- dist-remove []
+      (when-let [dist (first @distributors)]
+        (stop-bucket-distributor! dist)
+        (swap! distributors #(rest %)))
+      nil))
 
   (dist-add)
   (dist-remove)
