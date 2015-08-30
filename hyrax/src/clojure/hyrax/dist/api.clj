@@ -2,8 +2,8 @@
   "A mechanism for coordinated distribution of hash buckets.")
 
 (defprotocol Distributor 
-  (acquire-buckets* [this] )
-  (release-buckets* [this buckets] ))
+  (acquire-buckets* [this])
+  (release-buckets* [this buckets]))
 
 (defn acquire-buckets! 
   "Returns the set of buckets currently available to a

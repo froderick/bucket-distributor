@@ -1,12 +1,16 @@
 (ns hyrax.dist.rabbit-test
   (:use midje.sweet)
-  (:require [hyrax.dist.rabbit :refer :all])
+  (:require [hyrax.dist.rabbit :refer :all]
+            [hyrax.dist.api :as api])
   (:require [langohr.core      :as rmq]
             [langohr.channel   :as lch]
             [langohr.queue     :as lq]
             [langohr.exchange  :as le]
             [langohr.consumers :as lc]
-            [langohr.basic     :as lb]))
+            [langohr.basic     :as lb])
+  (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
+            ScheduledExecutorService Future]
+           [com.rabbitmq.client Connection]))
 
 (fact "bucket consumers provide concurrent exclusion of buckets"
    (with-conn [conn {:vhost "boofa"}]
@@ -142,5 +146,60 @@
 
    ;; initial shutdown blocks until release! is performed
    => [[["foo" "bar"] ["baz" "bing"]] [["foo" "bar"] ["baz" "bing"]]])
+
+(fact "start, acquire, release and stop distributor"
+   (with-conn [conn {:vhost "boofa"}]
+     (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
+           scheduler (Executors/newScheduledThreadPool 1)
+           buckets (->> (range 100) (map str) (into []))
+           dist (start-bucket-distributor! conn "bucket-too" buckets scheduler {})]
+
+       (let [buckets (api/acquire-buckets! dist)]
+         (api/release-buckets! dist buckets)
+         (stop-bucket-distributor! dist)
+         buckets)))
+   => #{"0"})
+
+(comment "stuff I used for manual testing"
+
+  (do 
+    (def distributors (atom []))
+
+    (defn- dist-add []
+      (swap! distributors 
+             #(conj % (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
+                            scheduler (Executors/newScheduledThreadPool 1)
+                            buckets (->> (range 100) (map str) (into []))]
+                        (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
+      nil)
+
+    (defn- dist-remove []
+      (when-let [dist (first @distributors)]
+        (stop-bucket-distributor! dist)
+        (swap! distributors #(rest %)))
+      nil))
+
+  (dist-add)
+  (dist-remove)
+  (clojure.pprint/pprint distributors)
+
+  (do 
+    (doseq [dist @distributors]
+      (let [buckets (acquire-buckets! dist)]
+        (release-buckets! dist buckets)))
+
+    (Thread/sleep 1000)
+
+    (doseq [dist @distributors]
+      (let [buckets (acquire-buckets! dist)]
+        (prn buckets))))
+
+  (count @distributors)
+    
+  (def consumer (-> @distributors first :state-atom deref :bucket-consumer))
+  (buckets! consumer)
+  (release! consumer (buckets! consumer))
+  )
+
 
 

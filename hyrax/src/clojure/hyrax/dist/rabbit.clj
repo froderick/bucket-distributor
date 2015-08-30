@@ -144,9 +144,6 @@
    (start-bucket-consumer! conn queue-name qos instance-id (atom {})))
 
   ([conn queue-name qos instance-id state-atom]
-   (start-bucket-consumer! conn queue-name qos instance-id state-atom false))
-
-  ([conn queue-name qos instance-id state-atom fail?]
 
    (log/debugf "[%s] bucket consumer starting: %s" instance-id {:qos qos})
    
@@ -156,8 +153,6 @@
                      (swap! state-atom #(incoming-swap % bucket))))]
 
      (add-watch state-atom :watcher #(bucket-consumer-shutdown-handler! %3 %4))
-
-     (when fail? (lch/close ch))
 
      (reset! state-atom (map->BucketConsumer {:instance-id instance-id
                                               :ch ch
@@ -281,7 +276,7 @@
   nil)
 
 ;;
-;; cluster aware bucket distributor implementation
+;; cluster-aware bucket distributor implementation
 ;;
 
 ;; handle broadcast events
@@ -493,44 +488,5 @@
   (release-buckets* [this buckets]
     (release! (-> this :state-atom deref :bucket-consumer) buckets)))
 
-(comment
 
-  (do 
-    (def distributors (atom []))
-
-    (defn- dist-add []
-      (swap! distributors 
-             #(conj % (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
-                            scheduler (Executors/newScheduledThreadPool 1)
-                            buckets (->> (range 100) (map str) (into []))]
-                        (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
-      nil)
-
-    (defn- dist-remove []
-      (when-let [dist (first @distributors)]
-        (stop-bucket-distributor! dist)
-        (swap! distributors #(rest %)))
-      nil))
-
-  (dist-add)
-  (dist-remove)
-  (clojure.pprint/pprint distributors)
-
-  (do 
-    (doseq [dist @distributors]
-      (let [buckets (acquire-buckets! dist)]
-        (release-buckets! dist buckets)))
-
-    (Thread/sleep 1000)
-
-    (doseq [dist @distributors]
-      (let [buckets (acquire-buckets! dist)]
-        (prn buckets))))
-
-  (count @distributors)
-    
-  (def consumer (-> @distributors first :state-atom deref :bucket-consumer))
-  (buckets! consumer)
-  (release! consumer (buckets! consumer))
-  )
   
