@@ -251,7 +251,8 @@
   (let [ch (require-ch conn)
         queue-name (-> ch lq/declare :queue)
         handler (fn [ch {:keys [delivery-tag headers]} ^bytes payload]
-                  (let [^com.rabbitmq.client.LongString sender-wrapper (get headers "peer-id") ; rabbit driver weirdness
+                  (let [; rabbit driver weirdness
+                        ^com.rabbitmq.client.LongString sender-wrapper (get headers "peer-id") 
                         sender-id (-> sender-wrapper
                                       (.getBytes)
                                       (String.))
