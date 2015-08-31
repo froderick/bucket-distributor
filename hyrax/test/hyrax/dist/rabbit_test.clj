@@ -197,6 +197,10 @@
 
 (fact "start, acquire, release and stop distributor"
    (with-conn [conn rabbit-info]
+
+      (with-chan [ch conn]
+        (lq/delete ch "bucket-too.bucket"))
+
      (let [scheduler (Executors/newScheduledThreadPool 1)
            buckets (->> (range 100) (map str) (into []))
            dist (start-bucket-distributor! conn "bucket-too" buckets scheduler {})]
@@ -205,7 +209,7 @@
          (api/release-buckets! dist buckets)
          (stop-bucket-distributor! dist)
          buckets)))
-   => #{"1"})
+   => #{"0"})
 
 (comment 
   "stuff I used for manual testing"
