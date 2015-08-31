@@ -60,7 +60,9 @@
   [conn queue-name instance-id f]
   (with-chan [ch conn]
     (let [acquired (try
-                     (lq/declare ch queue-name)
+                     (lq/declare ch queue-name {:durable false
+                                                :exclusive true
+                                                :auto-delete false})
                      true
                      (catch Exception e
                        false))]

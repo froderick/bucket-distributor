@@ -12,8 +12,25 @@
             ScheduledExecutorService Future]
            [com.rabbitmq.client Connection]))
 
+(def ^:private rabbit-info {:vhost "boofa"
+                            :requested-heartbeat 1 
+                            :connection-timeout 5000})
+
+(fact "rabbit lock exclusion"
+    (let [with-lock! (fn [f]
+                       (with-conn [conn rabbit-info]
+                         (#'hyrax.dist.rabbit/with-rabbit-lock! conn "foo.queue" "foo.instance" f)))
+          a (atom false)
+          b (atom false)
+          result (with-lock! (fn [] 
+                               (reset! a true)
+                               (with-lock! #(reset! b true))))]
+      [@a @b]) 
+    => [true false])
+       
+
 (fact "bucket consumers provide concurrent exclusion of buckets"
-   (with-conn [conn {:vhost "boofa"}]
+   (with-conn [conn rabbit-info]
     (let [queue-name "bucket-queue"
           prefetch 2]
 
@@ -58,7 +75,7 @@
 
 (fact "bucket consumers block on shutdown (by default) until the client
        has released all acquired buckets"
-   (with-conn [conn {:vhost "boofa"}]
+   (with-conn [conn rabbit-info]
     (let [queue-name "bucket-queue"
           prefetch 2]
 
@@ -98,7 +115,7 @@
 
 (fact "broadcast consumers receive all broadcasted events for a
        given exchange"
-   (with-conn [conn {:vhost "boofa"}]
+   (with-conn [conn rabbit-info]
     (let [exchange-name "bucket-exchange"]
 
       ;; clear exchange
@@ -148,9 +165,8 @@
    => [[["foo" "bar"] ["baz" "bing"]] [["foo" "bar"] ["baz" "bing"]]])
 
 (fact "start, acquire, release and stop distributor"
-   (with-conn [conn {:vhost "boofa"}]
-     (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
-           scheduler (Executors/newScheduledThreadPool 1)
+   (with-conn [conn rabbit-info]
+     (let [scheduler (Executors/newScheduledThreadPool 1)
            buckets (->> (range 100) (map str) (into []))
            dist (start-bucket-distributor! conn "bucket-too" buckets scheduler {})]
 
@@ -158,16 +174,21 @@
          (api/release-buckets! dist buckets)
          (stop-bucket-distributor! dist)
          buckets)))
-   => #{"0"})
+   => #{"1"})
 
-(comment "stuff I used for manual testing"
+(comment 
+  "stuff I used for manual testing"
+
+  (def conn (rmq/connect rabbit-info))
+  (with-chan [ch conn]
+    (type ch))
 
   (do 
     (def distributors (atom []))
 
     (defn- dist-add []
       (swap! distributors 
-             #(conj % (let [conn (rmq/connect {:vhost "boofa" :requested-heartbeat 1 :connection-timeout 1})
+             #(conj % (let [conn (rmq/connect rabbit-info)
                             scheduler (Executors/newScheduledThreadPool 1)
                             buckets (->> (range 100) (map str) (into []))]
                         (start-bucket-distributor! conn "bucket-too" buckets scheduler {}))))
