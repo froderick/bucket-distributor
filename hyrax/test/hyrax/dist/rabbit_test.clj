@@ -17,17 +17,30 @@
                             :connection-timeout 5000})
 
 (fact "rabbit lock exclusion"
-    (let [with-lock! (fn [f]
-                       (with-conn [conn rabbit-info]
-                         (#'hyrax.dist.rabbit/with-rabbit-lock! conn "foo.queue" "foo.instance" f)))
-          a (atom false)
-          b (atom false)
-          result (with-lock! (fn [] 
-                               (reset! a true)
-                               (with-lock! #(reset! b true))))]
-      [@a @b]) 
-    => [true false])
-       
+  (let [with-lock! (fn [f]
+                     (with-conn [conn rabbit-info]
+                       (#'hyrax.dist.rabbit/with-rabbit-lock! conn "foo.queue" "foo.instance" f)))
+        a (atom false)
+        b (atom false)
+        result (with-lock! (fn [] 
+                             (reset! a true)
+                             (with-lock! #(reset! b true))))]
+    [@a @b]) 
+  => [true false])
+
+(fact "verify queue-exists?"
+  (with-conn [conn rabbit-info]
+    (let [exists? (fn [queue-name]
+                    (#'hyrax.dist.rabbit/queue-exists? conn queue-name))
+          existent "funzors"
+          non-existent "funzors-imaginary"]
+
+      (with-chan [ch conn]
+        (doseq [q [existent non-existent]]
+                (lq/delete ch q))
+        (lq/declare ch existent {:auto-delete false}))
+
+      [(exists? existent) (exists? non-existent)])) => [true false])
 
 (fact "bucket consumers provide concurrent exclusion of buckets"
    (with-conn [conn rabbit-info]
