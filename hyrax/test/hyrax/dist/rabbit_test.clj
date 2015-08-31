@@ -42,6 +42,24 @@
 
       [(exists? existent) (exists? non-existent)])) => [true false])
 
+(defn- drain-messages
+  [conn queue-name]
+
+  (with-chan [ch conn]
+    (loop [messages []]
+      (if-let [^bytes payload (-> (lb/get ch queue-name true) second)]
+        (recur (conj messages (String. payload)))
+        messages))))
+
+(fact "init buckets"
+  (with-conn [conn rabbit-info]
+    (let [buckets (->> (range 5) (map str) (into []))
+          bucket-queue "b.q"]
+      (with-chan [ch conn]
+        (lq/delete ch bucket-queue))
+      (init-buckets! conn "o.q" bucket-queue buckets "instance")
+      (drain-messages conn bucket-queue))) => ["0" "1" "2" "3" "4"])
+
 (fact "bucket consumers provide concurrent exclusion of buckets"
    (with-conn [conn rabbit-info]
     (let [queue-name "bucket-queue"

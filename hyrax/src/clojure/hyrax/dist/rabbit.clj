@@ -98,7 +98,8 @@
                                        :exclusive false, 
                                        :auto-delete false})
           (doseq [^String bucket buckets]
-            (lb/publish ch "" bucket-queue (.getBytes bucket))))))))
+            (lb/publish ch "" bucket-queue (.getBytes bucket)))))))
+  nil)
 
 ;;
 ;; bucket consumer
