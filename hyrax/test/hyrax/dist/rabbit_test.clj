@@ -1,5 +1,5 @@
 (ns hyrax.dist.rabbit-test
-  (:use midje.sweet)
+  (:require [clojure.test :refer [deftest is run-all-tests]])
   (:require [hyrax.dist.rabbit :refer :all]
             [hyrax.dist.api :as api])
   (:require [langohr.core      :as rmq]
@@ -16,31 +16,34 @@
                             :requested-heartbeat 1 
                             :connection-timeout 5000})
 
-(fact "rabbit lock exclusion"
-  (let [with-lock! (fn [f]
-                     (with-conn [conn rabbit-info]
-                       (#'hyrax.dist.rabbit/with-rabbit-lock! conn "foo.queue" "foo.instance" f)))
-        a (atom false)
-        b (atom false)
-        result (with-lock! (fn [] 
-                             (reset! a true)
-                             (with-lock! #(reset! b true))))]
-    [@a @b]) 
-  => [true false])
+(deftest rabbit-lock-exclusion
+  (is
+   (let [with-lock! (fn [f]
+                      (with-conn [conn rabbit-info]
+                        (#'hyrax.dist.rabbit/with-rabbit-lock! conn "foo.queue" "foo.instance" f)))
+         a (atom false)
+         b (atom false)
+         result (with-lock! (fn [] 
+                              (reset! a true)
+                              (with-lock! #(reset! b true))))]
+     [@a @b]) 
+   [true false]))
 
-(fact "verify queue-exists?"
-  (with-conn [conn rabbit-info]
-    (let [exists? (fn [queue-name]
-                    (#'hyrax.dist.rabbit/queue-exists? conn queue-name))
-          existent "funzors"
-          non-existent "funzors-imaginary"]
+(deftest verify-queue-exists
+  (is 
+   (with-conn [conn rabbit-info]
+     (let [exists? (fn [queue-name]
+                     (#'hyrax.dist.rabbit/queue-exists? conn queue-name))
+           existent "funzors"
+           non-existent "funzors-imaginary"]
 
-      (with-chan [ch conn]
-        (doseq [q [existent non-existent]]
-                (lq/delete ch q))
-        (lq/declare ch existent {:auto-delete false}))
+       (with-chan [ch conn]
+         (doseq [q [existent non-existent]]
+           (lq/delete ch q))
+         (lq/declare ch existent {:auto-delete false}))
 
-      [(exists? existent) (exists? non-existent)])) => [true false])
+       [(exists? existent) (exists? non-existent)]))
+   [true false]))
 
 (defn- drain-messages
   [conn queue-name]
@@ -51,101 +54,103 @@
         (recur (conj messages (String. payload)))
         messages))))
 
-(fact "init buckets"
-  (with-conn [conn rabbit-info]
-    (let [buckets (->> (range 5) (map str) (into []))
-          bucket-queue "b.q"]
-      (with-chan [ch conn]
-        (lq/delete ch bucket-queue))
-      (init-buckets! conn "o.q" bucket-queue buckets "instance")
-      (drain-messages conn bucket-queue))) => ["0" "1" "2" "3" "4"])
-
-(fact "bucket consumers provide concurrent exclusion of buckets"
+(deftest init-buckets
+  (is
    (with-conn [conn rabbit-info]
-    (let [queue-name "bucket-queue"
-          prefetch 2]
+     (let [buckets (->> (range 5) (map str) (into []))
+           bucket-queue "b.q"]
+       (with-chan [ch conn]
+         (lq/delete ch bucket-queue))
+       (init-buckets! conn "o.q" bucket-queue buckets "instance")
+       (drain-messages conn bucket-queue)))
+   ["0" "1" "2" "3" "4"]))
 
-      ;; setup bucket queue
-      (with-chan [ch conn]
-        (try (lq/delete ch queue-name)
-             (catch Exception e))
-        (lq/declare ch queue-name {:durable false :exclusive false :auto-delete false})
-        (doseq [i (range 4)]
-          (lb/publish ch "" queue-name (str i))))
+(deftest bucket-consumers-provide-concurrent-exclusion-of-buckets
+  (is
+   (with-conn [conn rabbit-info]
+     (let [queue-name "bucket-queue"
+           prefetch 2]
 
-      ;; start consumers
-      (let [a (start-bucket-consumer! conn queue-name prefetch "a")
-            b (start-bucket-consumer! conn queue-name prefetch "b")
-            buckets-wait! #(loop []
-                             (let [buckets (buckets! %)]
-                               (if (< (count buckets) prefetch)
-                                 (do 
-                                   (Thread/sleep 100)
-                                   (recur))
-                                 buckets)))]
-        ;; acquire buckets from multiple consumers to verify
-        ;; that buckets are exclusively allocated until released.
-        (try
-          (let [b1 (buckets-wait! a)
-                b2 (buckets-wait! b)
-                _ (release! a b1)
-                _ (release! b b2)
-                b3 (buckets-wait! a)
-                _ (release! a b3)]
-            [b1 b2 b3])
-          (finally
-            (try 
-              ;; clean up with :force-stop in case the test borks
-              (stop-bucket-consumer! a :force-stop true)
-              (stop-bucket-consumer! b :force-stop true)
-              (catch Exception e
-                (.printStackTrace e)))))))) 
+       ;; setup bucket queue
+       (with-chan [ch conn]
+         (try (lq/delete ch queue-name)
+              (catch Exception e))
+         (lq/declare ch queue-name {:durable false :exclusive false :auto-delete false})
+         (doseq [i (range 4)]
+           (lb/publish ch "" queue-name (str i))))
 
+       ;; start consumers
+       (let [a (start-bucket-consumer! conn queue-name prefetch "a")
+             b (start-bucket-consumer! conn queue-name prefetch "b")
+             buckets-wait! #(loop []
+                              (let [buckets (buckets! %)]
+                                (if (< (count buckets) prefetch)
+                                  (do 
+                                    (Thread/sleep 100)
+                                    (recur))
+                                  buckets)))]
+         ;; acquire buckets from multiple consumers to verify
+         ;; that buckets are exclusively allocated until released.
+         (try
+           (let [b1 (buckets-wait! a)
+                 b2 (buckets-wait! b)
+                 _ (release! a b1)
+                 _ (release! b b2)
+                 b3 (buckets-wait! a)
+                 _ (release! a b3)]
+             [b1 b2 b3])
+           (finally
+             (try 
+               ;; clean up with :force-stop in case the test borks
+               (stop-bucket-consumer! a :force-stop true)
+               (stop-bucket-consumer! b :force-stop true)
+               (catch Exception e
+                 (.printStackTrace e))))))))  
    ;; buckets are handed out in sequence
-   => [#{"0" "1"} #{"2" "3"} #{"0" "1"}])
+   [#{"0" "1"} #{"2" "3"} #{"0" "1"}]))
 
-(fact "bucket consumers block on shutdown (by default) until the client
-       has released all acquired buckets"
+(deftest bucket-consumers-block-on-shutdown-until-the-client-has-released-all-acquired-buckets
+  (is
    (with-conn [conn rabbit-info]
-    (let [queue-name "bucket-queue"
-          prefetch 2]
+     (let [queue-name "bucket-queue"
+           prefetch 2]
 
-      ;; setup bucket queue
-      (with-chan [ch conn]
-        (try (lq/delete ch queue-name)
-             (catch Exception e))
-        (lq/declare ch queue-name {:durable false :exclusive false :auto-delete false})
-        (doseq [i (range 4)]
-          (lb/publish ch "" queue-name (str i))))
+       ;; setup bucket queue
+       (with-chan [ch conn]
+         (try (lq/delete ch queue-name)
+              (catch Exception e))
+         (lq/declare ch queue-name {:durable false :exclusive false :auto-delete false})
+         (doseq [i (range 4)]
+           (lb/publish ch "" queue-name (str i))))
 
-      ;; start consumers
-      (let [a (start-bucket-consumer! conn queue-name prefetch "a")
-            buckets-wait! #(loop []
-                             (let [buckets (buckets! %)]
-                               (if (< (count buckets) prefetch)
-                                 (do 
-                                   (Thread/sleep 100)
-                                   (recur))
-                                 buckets)))]
-        (try
-          (let [b1 (buckets-wait! a)
-                shutdown-future (future (stop-bucket-consumer! a))
-                shutdown-attempt (deref shutdown-future 50 :timeout)
-                _ (release! a b1)
-                shutdown-attempt2 (deref shutdown-future 50 :timeout)]
-            [shutdown-attempt shutdown-attempt2])
-          (finally
-            (try 
-              ;; clean up with :force-stop in case the test borks
-              (stop-bucket-consumer! a :force-stop true)
-              (catch Exception e
-                (.printStackTrace e)))))))) 
+       ;; start consumers
+       (let [a (start-bucket-consumer! conn queue-name prefetch "a")
+             buckets-wait! #(loop []
+                              (let [buckets (buckets! %)]
+                                (if (< (count buckets) prefetch)
+                                  (do 
+                                    (Thread/sleep 100)
+                                    (recur))
+                                  buckets)))]
+         (try
+           (let [b1 (buckets-wait! a)
+                 shutdown-future (future (stop-bucket-consumer! a))
+                 shutdown-attempt (deref shutdown-future 50 :timeout)
+                 _ (release! a b1)
+                 shutdown-attempt2 (deref shutdown-future 50 :timeout)]
+             [shutdown-attempt shutdown-attempt2])
+           (finally
+             (try 
+               ;; clean up with :force-stop in case the test borks
+               (stop-bucket-consumer! a :force-stop true)
+               (catch Exception e
+                 (.printStackTrace e)))))))) 
 
    ;; initial shutdown blocks until release! is performed
-   => [:timeout nil])
+   [:timeout nil]))
 
-(fact "broadcast consumers receive all broadcasted events for a
-       given exchange"
+(deftest broadcast-consumers-receive-all-broadcasted-events-for-a-given-exchange
+  (is
    (with-conn [conn rabbit-info]
     (let [exchange-name "bucket-exchange"]
 
@@ -193,13 +198,14 @@
                 (.printStackTrace e)))))))) 
 
    ;; initial shutdown blocks until release! is performed
-   => [[["foo" "bar"] ["baz" "bing"]] [["foo" "bar"] ["baz" "bing"]]])
+   [[["foo" "bar"] ["baz" "bing"]] [["foo" "bar"] ["baz" "bing"]]]))
 
-(fact "start, acquire, release and stop distributor"
+(deftest start-acquire-release-and-stop-distributor
+  (is
    (with-conn [conn rabbit-info]
 
-      (with-chan [ch conn]
-        (lq/delete ch "bucket-too.bucket"))
+     (with-chan [ch conn]
+       (lq/delete ch "bucket-too.bucket"))
 
      (let [scheduler (Executors/newScheduledThreadPool 1)
            buckets (->> (range 100) (map str) (into []))
@@ -209,7 +215,7 @@
          (api/release-buckets! dist buckets)
          (stop-bucket-distributor! dist)
          buckets)))
-   => #{"0"})
+   #{"0"}))
 
 (comment 
   "stuff I used for manual testing"
@@ -255,6 +261,9 @@
   (def consumer (-> @distributors first :state-atom deref :bucket-consumer))
   (buckets! consumer)
   (release! consumer (buckets! consumer))
+
+  (run-all-tests)
+
   )
 
 

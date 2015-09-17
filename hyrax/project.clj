@@ -21,7 +21,8 @@
                 ; a better way. A lot easier to read in here than in xml though.
                 
                 [com.theoryinpractise/clojure-maven-plugin "1.3.13"
-                 {:configuration [:sourceDirectories [:sourceDirectory "src/clojure"]]
+                 {:configuration ([:sourceDirectories [:sourceDirectory "src/clojure"]]
+                                  [:sourceTestDirectories [:sourceTestDirectory "test"]])
                   :extensions "true"
                   :executions ([:execution [:id "no-aot-compile"]
                                 [:goals ([:goal "compile"])]
@@ -35,7 +36,13 @@
                                 [:phase "compile"]
                                 [:configuration 
                                  [:outputDirectory "${basedir}/target/aot"]
-                                 [:temporaryOutputDirectory false]]])}]
+                                 [:temporaryOutputDirectory false]]]
+
+                               [:execution [:id "runtests"]
+                                [:goals ([:goal "test"])]
+                                [:phase "test"]]
+
+                               )}]
 
                 [org.apache.maven.plugins/maven-resources-plugin "2.7"
                  {:executions ([:execution [:id "copy-resources-no-aot"]
