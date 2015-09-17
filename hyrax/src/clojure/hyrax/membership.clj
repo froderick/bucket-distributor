@@ -17,10 +17,6 @@
   (:import [java.util.concurrent BlockingQueue LinkedBlockingQueue TimeUnit Executors 
             ScheduledExecutorService Future]))
 
-;;
-;; broadcast sender and consumer
-;;
-
 (def ^:private peer-id-header "peer-id")
 
 (let [names (->> (clojure.java.io/resource "names.txt")
@@ -78,10 +74,6 @@
   (lb/cancel ch consumer-tag)
   (lch/close ch)
   nil)
-
-;;
-;; use the consumer to handle events
-;;
 
 (defn- announce-swap
   [peer-id {:keys [peers] :as state}]
@@ -217,37 +209,4 @@
        :peers
        (map first)
        (into #{})))
-
-(def rabbit-info {:vhost "boofa"
-                  :requested-heartbeat 1 
-                  :connection-timeout 5000})
-
-(comment
-
-  (with-conn [conn rabbit-info]
-    (let [exchange-name "bucket-exchange.broadcast"]
-
-      ;; clear exchange
-      (with-chan [ch conn]
-        (try (le/delete ch exchange-name)
-             (catch Exception e)))
-
-      ;; start consumers
-      (let [make-appender (fn [vec-atom]
-                            (fn [peer-id message]
-                              (swap! vec-atom #(conj % [peer-id message]))))
-
-            group-name "bucket-exchange"
-            scheduler (Executors/newScheduledThreadPool 1)
-            options {}]
-
-            (with-open [a (join! conn group-name scheduler options)
-                        b (join! conn group-name scheduler options)]
-
-              (Thread/sleep 200)
-
-              [(members a) (members b)]))))
-
-  )
-
 
