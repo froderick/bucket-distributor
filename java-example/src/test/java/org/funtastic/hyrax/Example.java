@@ -4,7 +4,7 @@ import clojure.java.api.Clojure;
 import clojure.lang.IFn;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
-import hyrax.dist.RabbitDistributor;
+import hyrax.RabbitMembershipGroup;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -34,21 +34,23 @@ public class Example {
 
         final Connection c = cf.newConnection();
 
-        final RabbitDistributor rd = new RabbitDistributor();
-        rd.setConnection(c);
-        rd.setName("test");
-        rd.setDefaultBuckets(buckets);
-        rd.setScheduler(scheduler);
+        final RabbitMembershipGroup g = new RabbitMembershipGroup();
+        g.setConnection(c);
+        g.setName("test");
+        g.setScheduler(scheduler);
+        g.join();
 
-        start = System.currentTimeMillis();
-        rd.start();
-        end = System.currentTimeMillis();
-        System.out.println(end - start);
+        final RabbitMembershipGroup h = new RabbitMembershipGroup();
+        h.setConnection(c);
+        h.setName("test");
+        h.setScheduler(scheduler);
+        h.join();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 try {
-                    rd.stop();
+                    g.leave();
+                    h.leave();
                     scheduler.shutdownNow();
                     c.close();
                 }
@@ -59,18 +61,8 @@ public class Example {
         });
 
         while (true) {
-            try {
-                Set<String> l = rd.buckets();
-                for (String b : l) {
-                    Set<String> set = new HashSet();
-                    set.add(b);
-                    rd.release(set);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-            Thread.sleep(1000L);
+            System.out.println(g.members());
+            Thread.sleep(1000);
         }
     }
 }
