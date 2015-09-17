@@ -120,22 +120,27 @@
 ;; handle recalculating the partition size and changing the qos on the
 ;; bucket consumer to match
 
-(defn- log-peer-changes 
-  [last-peers peers peer-id]
+(defn- peers-change-listener!
+  "Logs out when peers join and leave the group, invokes handler-fn
+  with the old and new set of peers if its provided."
+  [group-name peer-id  handler-fn {last-peers :peers} {:keys [peers]}]
+
   (let [make-set #(->> % (map first) (into #{}))
         a (make-set last-peers)
         b (make-set peers)]
-    (doseq [id (clojure.set/difference b a)]
-      (log/debugf "[%s] peer added: %s%s" peer-id id (if (= id peer-id) " (self)" "")))
-    (doseq [id (clojure.set/difference a b)]
-      (log/debugf "[%s] peer removed: %s%s" peer-id id (if (= id peer-id) " (self)" "")))))
 
-(defn- peer-listener!
-  "Logs out when peers join and leave the group"
-  [group-name peer-id {last-peers :peers} {:keys [peers]}]
+    (when (log/enabled? :debug)
+      (doseq [id (clojure.set/difference b a)]
+        (log/debugf "[%s] peer added: %s%s" peer-id id (if (= id peer-id) " (self)" "")))
 
-  (when (log/enabled? :debug)
-    (log-peer-changes last-peers peers peer-id)))
+      (doseq [id (clojure.set/difference a b)]
+        (log/debugf "[%s] peer removed: %s%s" peer-id id (if (= id peer-id) " (self)" ""))))
+
+    (when (and handler-fn (not= a b))
+      (try 
+        (handler-fn a b)
+        (catch Exception e
+          (log/errorf e "[%s] failed while invoking handler-fn" peer-id))))))
 
 (defn- update-peers! 
   "Announce the current peer-id and evict any cached peer ids that have expired."
@@ -154,13 +159,22 @@
   (close [this]
     (leave! this)))
 
+(defn- configure-options
+  "Strip out options with null values, then apply the defaults."
+  [options]
+  (let [defaults {:peers-period      1   :peers-units      TimeUnit/MINUTES
+                  :expiration-period 2   :expiration-units TimeUnit/MINUTES}]
+    (->> options
+         (filter #(not (nil? (second %))))
+         (merge defaults))))
+
 (defn join!
   "Returns a MembershipGroup"
   [conn group-name ^ScheduledExecutorService scheduler options]
 
-  (let [defaults {:peers-period      1 :peers-units      TimeUnit/MINUTES
-                  :expiration-period 2 :expiration-units TimeUnit/MINUTES}
-        options (merge defaults options)
+  (let [options (configure-options options)
+        {:keys [peers-period peers-units handler-fn]} options
+
         exchange (str group-name ".broadcast")
         peer-id (peer-id)
 
@@ -169,7 +183,7 @@
         state-atom (-> (atom {:peers {} ; atomic peer/bucket partition size state
                               :shutdown false})
                        (add-watch :watch
-                                  #(peer-listener! group-name peer-id %3 %4)))
+                                  #(peers-change-listener! group-name peer-id handler-fn %3 %4)))
 
         broadcast! #(send! conn exchange peer-id %)
 
@@ -177,8 +191,6 @@
                                   #(handle-broadcast! peer-id state-atom broadcast! %1 %2))
 
         _ (broadcast! "poll")
-
-        {:keys [peers-period peers-units]} options
 
         peers-future (.scheduleAtFixedRate scheduler #(update-peers! broadcast! peer-id state-atom options)
                                            0 peers-period peers-units)]

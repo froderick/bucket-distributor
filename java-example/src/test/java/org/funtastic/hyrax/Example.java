@@ -4,6 +4,7 @@ import clojure.java.api.Clojure;
 import clojure.lang.IFn;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import hyrax.IMembershipGroup;
 import hyrax.RabbitMembershipGroup;
 
 import java.util.HashSet;
@@ -38,12 +39,22 @@ public class Example {
         g.setConnection(c);
         g.setName("test");
         g.setScheduler(scheduler);
+        g.setHandler(new IMembershipGroup.Handler() {
+            public void groupChanged(Set<String> oldPeers, Set<String> newPeers) {
+                System.out.println("G: " + oldPeers + "/" + newPeers);
+            }
+        });
         g.join();
 
         final RabbitMembershipGroup h = new RabbitMembershipGroup();
         h.setConnection(c);
         h.setName("test");
         h.setScheduler(scheduler);
+        h.setHandler(new IMembershipGroup.Handler() {
+            public void groupChanged(Set<String> oldPeers, Set<String> newPeers) {
+                System.out.println("H:" + oldPeers + "/" + newPeers);
+            }
+        });
         h.join();
 
         Runtime.getRuntime().addShutdownHook(new Thread() {

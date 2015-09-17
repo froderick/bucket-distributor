@@ -60,9 +60,19 @@
 (defn -setExpirationUnits [this  v]
   (setfield this :expiration-units v))
 
+(defn -setHandler [this ^hyrax.IMembershipGroup$Handler v]
+  (setfield this :handler-fn #(.groupChanged v %1 %2)))
+
 (defn -join [this]
-  (let [{:keys [conn name scheduler]} @(state this)]
-    (setfield this :dist (m/join! conn name scheduler {}))))
+  (let [{:keys [conn name scheduler
+                peers-period peers-units
+                expiration-period expiration-units
+                handler-fn]} @(state this)]
+    (setfield this :dist (m/join! conn name scheduler {:peers-period peers-period
+                                                       :peers-units peers-units
+                                                       :expiration-period expiration-period
+                                                       :expiration-units expiration-units
+                                                       :handler-fn handler-fn}))))
 
 (defn dist [this]
   (let [{:keys [dist]} @(state this)]

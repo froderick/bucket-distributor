@@ -31,13 +31,23 @@
           
           group-name "bucket-exchange"
           scheduler (Executors/newScheduledThreadPool 1)
-          options {}
-  
-          [a b] (with-open [a (m/join! conn group-name scheduler options)
-                            b (m/join! conn group-name scheduler options)]
-                  (Thread/sleep 200)
-                  [(m/members a) (m/members b)])]
 
-      [(count a) (count b)])) => [2 2])
+          handler-fn-atom (atom [])
+          handler-fn (fn [a b] (reset! handler-fn-atom [a b]))
+          options {:handler-fn handler-fn}]
+  
+      (with-open [a (m/join! conn group-name scheduler options)
+                  b (m/join! conn group-name scheduler options)]
+
+        (Thread/sleep 200)
+
+        (let [count-a (count (m/members a))
+              count-b (count (m/members b))
+              [before after] @handler-fn-atom]
+
+        [count-a count-b (count before) (count after)]))))
+
+  => [2 2   ; both nodes should have the same member list
+      1 2]) ; the handle-fn should only be called if the member list has changed
 
 
