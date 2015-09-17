@@ -1,4 +1,20 @@
 (ns hyrax.membership-interop
+
+  "next up is to create a mechanism for scheduling an event to fire
+  probabilistically based on the number of peers available, n times per period.
+
+  (fire group scheduler start frequency units f)
+
+  actually, just make an implementation of runnable that supports
+  probabilistically invoking its parameter based on the current
+  membership size in the group.
+
+
+  (let [fire? #(maybe-fire (members group) concurrent-fires)
+        fut (.schedule scheduler x y z #(when fire? (do-it)))]
+    fut)
+  "
+
   (:require [hyrax.membership :as m])
   (:gen-class
     :name hyrax.RabbitMembershipGroup
@@ -6,6 +22,12 @@
     :main false
     :init init
     :state state))
+
+
+(defn maybe-fire [members concurrency]
+  (let [buckets  (int (/ members concurrency))
+        rand (-> (java.util.Random.) (.nextInt buckets))]
+    (zero? rand)))
 
 (defn -init []
   [[] (atom {})])
@@ -39,8 +61,8 @@
   (setfield this :expiration-units v))
 
 (defn -join [this]
-  (let [{:keys [conn name default-buckets scheduler]} @(state this)]
-    (setfield this :dist (m/join! conn name default-buckets scheduler {}))))
+  (let [{:keys [conn name scheduler]} @(state this)]
+    (setfield this :dist (m/join! conn name scheduler {}))))
 
 (defn dist [this]
   (let [{:keys [dist]} @(state this)]

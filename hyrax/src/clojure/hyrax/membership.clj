@@ -40,7 +40,7 @@
   "Creates and starts a broadcast consumer, returns a record that contains
    the state of the consumer. The handler function signature looks like
    the following: (fn [peer-id message])."
-  [conn exchange-name handler-fn]
+  [conn exchange-name peer-id handler-fn]
 
   (let [ch (require-ch! conn)
         queue-name (-> ch lq/declare :queue)
@@ -54,7 +54,7 @@
                     (try 
                       (handler-fn sender-id broadcast)
                       (catch Exception e
-                        (.printStackTrace e))
+                        (log/errorf e "[%s] handling message failed" peer-id))
                       (finally 
                         (lb/ack ch delivery-tag)))))]
 
@@ -68,8 +68,6 @@
 (defn- stop-consumer! 
   "Shuts down the broadcast consumer. Returns nil."
   [{:keys [ch consumer-tag]}]
-
-  (println "###" ch consumer-tag)
 
   (lb/cancel ch consumer-tag)
   (lch/close ch)
@@ -119,14 +117,6 @@
     (assoc state :peers (->> (clojure.set/difference peers expired)
                              (into {})))))
 
-(defn- update-peers! 
-  [broadcast! peer-id state-atom {:keys [expiration-period expiration-units]}]
-  (try
-    (broadcast! (str "announce:" peer-id))
-    (swap! state-atom #(expire-swap expiration-period expiration-units peer-id %))
-    (catch Exception e
-      (.printStackTrace e))))
-
 ;; handle recalculating the partition size and changing the qos on the
 ;; bucket consumer to match
 
@@ -147,9 +137,17 @@
   (when (log/enabled? :debug)
     (log-peer-changes last-peers peers peer-id)))
 
+(defn- update-peers! 
+  "Announce the current peer-id and evict any cached peer ids that have expired."
+  [broadcast! peer-id state-atom {:keys [expiration-period expiration-units]}]
+  (try
+    (broadcast! (str "announce:" peer-id))
+    (swap! state-atom #(expire-swap expiration-period expiration-units peer-id %))
+    (catch Exception e
+      (log/errorf e "[%s] failed while updating peers" peer-id))))
+
 (declare leave!)
 
-;; core stuff that gets passed around
 (defrecord MembershipGroup [options peer-id state-atom 
                             broadcast! broadcast-consumer peers-future]
   java.io.Closeable
@@ -175,7 +173,7 @@
 
         broadcast! #(send! conn exchange peer-id %)
 
-        consumer (start-consumer! conn exchange
+        consumer (start-consumer! conn exchange peer-id
                                   #(handle-broadcast! peer-id state-atom broadcast! %1 %2))
 
         _ (broadcast! "poll")

@@ -19,27 +19,25 @@
 
 (fact "basic usage"
   (with-conn [conn rabbit-info]
-    (let [exchange-name "bucket-exchange.broadcast"]
+    (let [exchange-name "bucket-exchange.broadcast"
+          
+          _ (with-chan [ch conn] ;; clear exchange
+              (try (le/delete ch exchange-name)
+                   (catch Exception e)))
   
-      ;; clear exchange
-      (with-chan [ch conn]
-        (try (le/delete ch exchange-name)
-             (catch Exception e)))
+          make-appender (fn [vec-atom] ;; start consumers
+                          (fn [peer-id message]
+                            (swap! vec-atom #(conj % [peer-id message]))))
+          
+          group-name "bucket-exchange"
+          scheduler (Executors/newScheduledThreadPool 1)
+          options {}
   
-      ;; start consumers
-      (let [make-appender (fn [vec-atom]
-                            (fn [peer-id message]
-                              (swap! vec-atom #(conj % [peer-id message]))))
-  
-            group-name "bucket-exchange"
-            scheduler (Executors/newScheduledThreadPool 1)
-            options {}]
-  
-        (with-open [a (m/join! conn group-name scheduler options)
-                    b (m/join! conn group-name scheduler options)]
-  
-          (Thread/sleep 200)
-  
-          [(m/members a) (m/members b)]))))
+          [a b] (with-open [a (m/join! conn group-name scheduler options)
+                            b (m/join! conn group-name scheduler options)]
+                  (Thread/sleep 200)
+                  [(m/members a) (m/members b)])]
 
-  )
+      [(count a) (count b)])) => [2 2])
+
+
