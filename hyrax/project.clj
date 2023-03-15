@@ -76,7 +76,7 @@
                                [:goals ([:goal "jar"])]
                                [:phase "package"]])}]]
 
-  :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.1.2"]
+  :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.4.5"]
                                   [midje "1.7.0"]]
                    :plugins [[lein-midje "3.1.3"]]}
 
