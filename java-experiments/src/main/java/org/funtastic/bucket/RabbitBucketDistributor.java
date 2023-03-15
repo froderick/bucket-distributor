@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
 
 import static org.funtastic.bucket.RabbitBucketDistributor.require;
 
@@ -180,14 +181,14 @@ public class RabbitBucketDistributor {
                 try {
                     ch.close();
                 }
-                catch (IOException e) {
-                    // this is ok
-                }
+                // this is ok
+                catch (TimeoutException e) {}
+                catch (IOException e) {} 
             }
         }
     }
 
-    private void updatePartitionSize() throws IOException {
+    private void updatePartitionSize() throws IOException, TimeoutException {
         mutex.lock();
         try {
             int knownConsumers = peers.size();
@@ -284,7 +285,7 @@ public class RabbitBucketDistributor {
         }
     }
 
-    private void broadcast(String... msg) throws IOException {
+    private void broadcast(String... msg) throws IOException, TimeoutException {
         Channel ch = null;
         try {
             ch = c.createChannel();
@@ -315,7 +316,7 @@ public class RabbitBucketDistributor {
         }
     }
 
-    public void start() throws IOException {
+    public void start() throws IOException, TimeoutException {
         mutex.lock();
         try {
             if (started) {
@@ -574,7 +575,7 @@ class BucketConsumer {
         }
     }
 
-    public void stop() throws IOException, InterruptedException  {
+    public void stop() throws IOException, TimeoutException, InterruptedException  {
         mutex.lock();
         try {
 
@@ -618,7 +619,7 @@ class BucketConsumer {
         }
     }
 
-    public void restart() throws IOException, InterruptedException {
+    public void restart() throws IOException, TimeoutException, InterruptedException {
         mutex.lock();
         try {
             stop();
@@ -701,7 +702,7 @@ class BroadcastConsumer {
         }
     }
 
-    public void stop() throws IOException, InterruptedException  {
+    public void stop() throws IOException, TimeoutException, InterruptedException  {
         mutex.lock();
         try {
 
